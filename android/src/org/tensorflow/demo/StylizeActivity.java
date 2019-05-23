@@ -54,6 +54,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Vector;
 
+import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 import org.tensorflow.demo.OverlayView.DrawCallback;
 import org.tensorflow.demo.env.BorderedText;
 import org.tensorflow.demo.env.ImageUtils;
@@ -121,6 +122,15 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private ImageGridAdapter adapter;
   private GridView grid;
+
+  // Copy these lines below
+  private TensorFlowInferenceInterface inferenceInterface;
+
+  private static final String MODEL_FILE = "file:///android_asset/stylize_quantized.pb";
+
+  private static final String INPUT_NODE = "input";
+  private static final String STYLE_NODE = "style_num";
+  private static final String OUTPUT_NODE = "transformer/expand/conv3/conv/Sigmoid";
 
   private final OnTouchListener gridTouchAdapter =
       new OnTouchListener() {
@@ -359,6 +369,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     final float textSizePx =
         TypedValue.applyDimension(
             TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
+    inferenceInterface = new TensorFlowInferenceInterface(getAssets(), MODEL_FILE);
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
@@ -574,7 +585,15 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
       }
     }
 
-    // TODO: Process the image in TensorFlow here.
+    inferenceInterface.feed(INPUT_NODE, floatValues,
+            1, bitmap.getWidth(), bitmap.getHeight(), 3);
+    inferenceInterface.feed(STYLE_NODE, styleVals, NUM_STYLES);
+
+    // Execute the output node's dependency sub-graph.
+    inferenceInterface.run(new String[] {OUTPUT_NODE}, isDebug());
+
+    // Copy the data from TensorFlow back into our array.
+    inferenceInterface.fetch(OUTPUT_NODE, floatValues);
 
     for (int i = 0; i < intValues.length; ++i) {
       intValues[i] =
@@ -623,6 +642,10 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
     final Vector<String> lines = new Vector<>();
 
+    // Add these three lines right here:
+    final String[] statLines = inferenceInterface.getStatString().split("\n");
+    Collections.addAll(lines, statLines);
+    lines.add("");
     lines.add("Frame: " + previewWidth + "x" + previewHeight);
     lines.add("Crop: " + copy.getWidth() + "x" + copy.getHeight());
     lines.add("View: " + canvas.getWidth() + "x" + canvas.getHeight());
